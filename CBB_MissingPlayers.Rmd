@@ -1,0 +1,312 @@
+```{r Merge All Data Sets}
+# Upload scraped list of players
+
+DraftedPlayers <- read_csv("D:/Fall Cluster Course/DataDraftedPlayers.csv")
+
+# Create URL column for join
+
+drops <- c("X1")
+DraftedPlayers <- DraftedPlayers[ , !(names(DraftedPlayers) %in% drops)]
+
+lst <- strsplit(DraftedPlayers$Player, "\\s+")
+DraftedPlayers$FirstName <- sapply(lst ,`[`, 1)
+DraftedPlayers$LastName <- sapply(lst ,`[`, 2)
+DraftedPlayers$OtherName <- sapply(lst ,`[`, 3)
+
+DraftedPlayers$URLName <- sapply((paste0(DraftedPlayers$FirstName,"-",DraftedPlayers$LastName)),tolower)
+DraftedPlayers$URLName <- gsub("\\.", "", DraftedPlayers$URLName)
+DraftedPlayers$URLName <- gsub("\\'", "", DraftedPlayers$URLName)
+
+# Upload scraped player data
+
+Players_1 <- read_csv("D:/Fall Cluster Course/CBBStats5Table_1.csv")
+Players_2 <- read_csv("D:/Fall Cluster Course/CBBStats5Table_2.csv")
+Players_3 <- read_csv("D:/Fall Cluster Course/CBBStats5Table_3.csv")
+
+UncleanedPlayerData <- rbind(Players_1,Players_2,Players_3)
+
+# Join datasets on URLName
+
+CompletePlayerData <- CollegeStats5T1_1 <- left_join(DraftedPlayers, UncleanedPlayerData, by = c("URLName" = "URLName"))
+
+# Save CSV
+
+# write.csv(CompletePlayerData, file = "D:/Fall Cluster Course/CollegePlayerData.csv")
+
+```
+
+```{r Missing Players}
+
+ScrapedPlayers <- read_csv("D:/Fall Cluster Course/CollegePlayerData_Refined.csv")
+
+matched <- intersect(DraftedPlayers$URLName, ScrapedPlayers$URLName)
+all <-  union(DraftedPlayers$URLName, ScrapedPlayers$URLName)
+non.matched <- all[!all %in% matched]
+
+MissingPlayers <- read_csv("D:/Fall Cluster Course/MissingCollegePlayers.csv")
+
+
+```
+
+```{r Scrape College Stats 2 Tables -1}
+library(rvest)
+library(dplyr)
+library(httr)
+library(data.table)
+
+# Create blank dataframe to collect data
+CollegeStats2T1 <- data.frame()
+
+# Below For Loop will webscrape Player data
+for(itm in MissingPlayers$URL){
+  tryCatch({
+  Temp <- data.frame()
+  
+
+  url <- itm
+  pg <- read_html(url)
+
+
+  page_to_scrape <- GET(url)
+
+  Dataframe <-  content(page_to_scrape, "text") %>% 
+              gsub(pattern = "<!--\n", "", ., fixed = TRUE) %>% 
+              read_html %>% 
+              html_nodes(".table_outer_container table") %>% 
+              html_table
+# Save dataframes as variables
+  PerGame <- Dataframe[[1]]
+  Totals <- Dataframe[[2]]
+
+  drops <- c("Season","School","Conf","G","GS","FG%","FT%","2P%","3P%","Awards","MP","")
+  PerGame <- PerGame[ , !(names(PerGame) %in% drops)]
+
+  # Generate lists of column names per dataframe in Per Game and Per40
+  PGcols <- colnames(PerGame)
+
+  # Rename column names from PerGame and Per40 that are already in Totals
+
+    for (itm2 in PGcols){
+      setnames(PerGame, old = itm2, new = paste0("Per Game ", itm2))
+    }
+
+  # Combine Dataframes and add ID to join DFs on
+
+  Temp <- cbind(Totals, PerGame)
+  Temp$URL<- itm
+
+  CollegeStats2T1 <- smartbind(CollegeStats2T1, Temp)
+  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+}
+```
+
+```{r Scrape College Stats 3 Table -1}
+library(rvest)
+library(dplyr)
+library(httr)
+library(data.table)
+
+# Create blank dataframe to collect data
+CollegeStats3T1 <- data.frame()
+
+# Below For Loop will webscrape Player data
+for(itm in MissingPlayers$URL){
+  tryCatch({
+  Temp <- data.frame()
+  
+
+  url <- itm
+  pg <- read_html(url)
+
+
+  page_to_scrape <- GET(url)
+
+  Dataframe <-  content(page_to_scrape, "text") %>% 
+              gsub(pattern = "<!--\n", "", ., fixed = TRUE) %>% 
+              read_html %>% 
+              html_nodes(".table_outer_container table") %>% 
+              html_table
+# Save dataframes as variables
+  Per40 <- Dataframe[[3]]
+
+  drops <- c("G","GS","FG%","FT%","2P%","3P%","Awards","MP","")
+  Per40 <- Per40[ , !(names(Per40) %in% drops)]
+
+  # Generate lists of column names per dataframe in Per Game and Per40
+  P40cols <- colnames(Per40)
+
+  # Rename column names from PerGame and Per40 that are already in Totals
+
+    # for (itm2 in P40cols){
+    #   setnames(Per40, old = itm2, new = paste0("Per 40 ", itm2))
+    # }
+
+  # Combine Dataframes and add ID to join DFs on
+
+  Temp <- Per40
+  Temp$URL <- itm
+
+  CollegeStats3T1 <- smartbind(CollegeStats3T1, Temp)
+  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+}
+```
+
+```{r Clean Table 3 and Join with Primary Dataset}
+
+Per40Table <- CollegeStats3T1[!is.na(CollegeStats3T1[,"FG"]),]
+
+Per40Table <- Per40Table[, -c(20:32)] # delete columns
+
+# Rename columns to say 'Per 40'
+P40colsTable <- colnames(Per40Table)
+
+for (itm in P40colsTable){
+  setnames(Per40Table, old = itm, new = paste0("Per 40 ", itm))
+}
+
+CollegeStats3T1_1 <- left_join(CollegeStats2T1, Per40Table, by = c("URL" = "Per 40 URL","Season" = "Per 40 Season","School" = "Per 40 School","Conf" = "Per 40 Conf"))
+
+```
+
+```{r Scrape College Stats 4 Tables -1}
+library(rvest)
+library(dplyr)
+library(httr)
+library(data.table)
+
+# Create blank dataframe to collect data
+CollegeStats4T1 <- data.frame()
+
+# Below For Loop will webscrape Player data
+for(itm in MissingPlayers$URL){
+  tryCatch({
+  Temp <- data.frame()
+  
+
+  url <- itm
+  pg <- read_html(url)
+
+
+  page_to_scrape <- GET(url)
+
+  Dataframe <-  content(page_to_scrape, "text") %>% 
+              gsub(pattern = "<!--\n", "", ., fixed = TRUE) %>% 
+              read_html %>% 
+              html_nodes(".table_outer_container table") %>% 
+              html_table
+# Save dataframes as variables
+  Advanced <- Dataframe[[4]]
+
+  drops <- c("G","GS","FG%","FT%","2P%","3P%","Awards","MP","")
+  Advanced <- Advanced[ , !(names(Advanced) %in% drops)]
+
+  # Generate lists of column names per dataframe in Per Game and Per40
+  # PGcols <- colnames(PerGame)
+  # P40cols <- colnames(Per40)
+
+  # Rename column names from PerGame and Per40 that are already in Totals
+
+  # for (itm3 in P40cols){
+  #     setnames(Per40, old = itm3, new = paste0("Per 40 ", itm3))
+  #   }
+
+  # Combine Dataframes and add ID to join DFs on
+
+  Temp <- Advanced
+  Temp$URL <- itm
+
+  CollegeStats4T1 <- smartbind(CollegeStats4T1, Temp)
+  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+}
+```
+
+```{r 4 & 5 Table Players join with Primary Dataset}
+# 
+
+Per100Poss4T <- CollegeStats4T1[!is.na(CollegeStats4T1[,"FG"]),]
+Advanced4T <- CollegeStats4T1[!is.na(CollegeStats4T1[,"TS%"]),]
+
+Advanced4T <- Advanced4T[, -c(22:38)] # delete columns
+Per100Poss4T <- Per100Poss4T[, -c(4:20)] # delete columns
+
+# Rename columns to say 'Per 40'
+Per100PosscolsTable <- colnames(Per100Poss4T)
+Advanced4Table <- colnames(Advanced4T)
+
+for (itm in Per100PosscolsTable){
+  setnames(Per100Poss4T, old = itm, new = paste0("Per 100 Poss ", itm))
+}
+
+CollegeStats4T1_1 <- left_join(CollegeStats3T1_1, Per100Poss4T, by = c("URL" = "Per 100 Poss URL","Season" = "Per 100 Poss Season","School" = "Per 100 Poss School","Conf" = "Per 100 Poss Conf"))
+
+# CollegeStats4T1_1 <- left_join(CollegeStats4T1_1, Advanced4T, by = c("URLName" = "`URLName`","Season" = "`Season`","School" = "`School`","Conf" = "`Conf`"))
+
+# Test2 <- CollegeStats4T1_1[!is.na(CollegeStats4T1_1[,"Per 100 Poss FG"]),]
+
+```
+
+```{r Scrape College Stats 5 Tables -1}
+library(rvest)
+library(dplyr)
+library(httr)
+library(data.table)
+
+# Create blank dataframe to collect data
+CollegeStats5T1 <- data.frame()
+
+# Below For Loop will webscrape Player data
+for(itm in MissingPlayers$URL){
+  tryCatch({
+  Temp <- data.frame()
+  
+
+  url <- itm
+  pg <- read_html(url)
+
+
+  page_to_scrape <- GET(url)
+
+  Dataframe <-  content(page_to_scrape, "text") %>% 
+              gsub(pattern = "<!--\n", "", ., fixed = TRUE) %>% 
+              read_html %>% 
+              html_nodes(".table_outer_container table") %>% 
+              html_table
+# Save dataframes as variables
+  Advanced <- Dataframe[[5]]
+
+  drops <- c("G","GS","FG%","FT%","2P%","3P%","Awards","MP","")
+  Advanced <- Advanced[ , !(names(Advanced) %in% drops)]
+
+  # Generate lists of column names per dataframe in Per Game and Per40
+  # PGcols <- colnames(PerGame)
+  # P40cols <- colnames(Per40)
+
+  # Rename column names from PerGame and Per40 that are already in Totals
+
+  # for (itm3 in P40cols){
+  #     setnames(Per40, old = itm3, new = paste0("Per 40 ", itm3))
+  #   }
+
+  # Combine Dataframes and add ID to join DFs on
+
+  Temp <- Advanced
+  Temp$URLName <- itm
+
+  CollegeStats5T1 <- smartbind(CollegeStats5T1, Temp)
+  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+}
+```
+
+```{r 5 Table Players join with Primary Dataset}
+
+Advanced45 <- smartbind(Advanced4T,CollegeStats5T1)
+
+CollegeStats5T1_1 <- left_join(CollegeStats4T1_1, Advanced45, by = c("URL" = "URL","Season" = "Season","School" = "School","Conf" = "Conf"))
+MissingPlayersScraped <- left_join(MissingPlayers, CollegeStats5T1_1, by = c("URL" = "URL"))
+
+#write.csv(CollegeStats4T1_1, file = "D:/Fall Cluster Course/CBBStats4Tables.csv")
+
+
+write.csv(MissingPlayersScraped, file = "D:/Fall Cluster Course/CBBStatsMissingPlayers.csv")
+
+```
