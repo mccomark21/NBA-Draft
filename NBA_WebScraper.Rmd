@@ -1,0 +1,75 @@
+```{r Scrape Individual Page}
+library(rvest)
+library(dplyr)
+library(httr)
+library(data.table)
+
+page_to_scrape <- GET("https://www.basketball-reference.com/players/a/anthoca01.html")
+
+DFs <- content(page_to_scrape, "text") %>% 
+        gsub(pattern = "<!--\n", "", ., fixed = TRUE) %>% 
+        read_html %>% 
+        html_nodes(".table_outer_container table") %>% 
+        html_table
+
+Totals <- DFs[[3]]
+PerGame <- DFs[[2]]
+Per_36_Min <- DFs[[4]]
+Per_100_Poss <- DFs[[5]]
+Advanced <- DFs[[6]]
+
+drops <- c("Season","Age","Tm","Lg","Pos","FG%","FT%","2P%","3P%","eFG%","G","GS","MP","")
+
+PerGame <- PerGame[ , !(names(PerGame) %in% drops)]
+
+Per_36_Min <- Per_36_Min[ , !(names(Per_36_Min) %in% drops)]
+
+Per_100_Poss <- Per_100_Poss[ , !(names(Per_100_Poss) %in% drops)]
+
+Advanced <- Advanced[ , !(names(Advanced) %in% drops)]
+  
+PGcols <- colnames(PerGame)
+P36cols <- colnames(Per_36_Min)
+P100cols <- colnames(Per_100_Poss)
+
+
+for (itm in PGcols){
+  setnames(PerGame, old = itm, new = paste0("Per Game ", itm))
+}
+
+for (itm in P36cols){
+  setnames(Per_36_Min, old = itm, new = paste0("Per 36 Min ", itm))
+}
+
+for (itm in P100cols){
+  setnames(Per_100_Poss, old = itm, new = paste0("Per 36 Min ", itm))
+}
+
+IPT <- cbind(Totals,PerGame,Per_36_Min,Per_100_Poss,Advanced)
+
+```
+
+```{r Create URLs}
+library(readr)
+
+DraftedPlayers <- read_csv("D:/Fall Cluster Course/DataDraftedPlayers.csv")
+
+drops <- c("X1")
+DraftedPlayers <- DraftedPlayers[ , !(names(DraftedPlayers) %in% drops)]
+
+# Parse apart Name column
+
+lst <- strsplit(DraftedPlayers$Player, "\\s+")
+DraftedPlayers$FirstName <- sapply(lst ,`[`, 1)
+DraftedPlayers$LastName <- sapply(lst ,`[`, 2)
+DraftedPlayers$OtherName <- sapply(lst ,`[`, 3)
+
+# https://www.basketball-reference.com/players/a/anthoca01.html
+
+DraftedPlayers$URLP1 <- sapply(substr(DraftedPlayers$LastName, 1, 1),tolower)
+DraftedPlayers$URLP2 <- sapply(substr(DraftedPlayers$LastName, 1, 5),tolower)
+DraftedPlayers$URLP3 <- sapply(substr(DraftedPlayers$FirstName, 1, 2),tolower)
+
+DraftedPlayers$NBA_URL <- str_c('https://www.basketball-reference.com/players/',DraftedPlayers$URLP1,'/',DraftedPlayers$URLP2,DraftedPlayers$URLP3,'01.html')
+
+```
