@@ -1,0 +1,61 @@
+```{r import libraries}
+
+library(rvest)
+library(dplyr)
+library(httr)
+library(data.table)
+library(gtools)
+library(stringr)
+
+```
+
+
+```{r}
+
+CBB_Stat_Scraper <- function(x){
+  
+
+tryCatch({
+  
+page_to_scrape <- GET(x)
+
+DFs <- content(page_to_scrape, "text") %>% 
+        gsub(pattern = "<!--\n", "", ., fixed = TRUE) %>% 
+        read_html %>% 
+        html_nodes(".table_outer_container table") %>% 
+        html_table
+
+# Identify desired data frames
+
+Totals <- DFs[[2]]
+PerGame <- DFs[[1]]
+Per_40_Min <- DFs[[3]]
+Advanced <- DFs[[4]]
+
+# Drop redundant columns found in DFs
+
+drops <- c("Season","Age","Tm","Lg","Pos","FG%","FT%","2P%","3P%","eFG%","G","GS","MP","")
+
+PerGame <- PerGame[ , !(names(PerGame) %in% drops)]
+
+Per_40_Min <- Per_40_Min[ , !(names(Per_40_Min) %in% drops)]
+
+Advanced <- Advanced[ , !(names(Advanced) %in% drops)]
+  
+# Rename columns according to their DF name
+
+colnames(PerGame) <- str_c("Per Game ",colnames(PerGame))
+colnames(Per_40_Min) <- str_c("Per 40 Min ",colnames(Per_40_Min))
+
+# Concatenate DFs into a single DF
+
+IPT <- cbind(Totals,PerGame,Per_40_Min,Per_100_Poss,Advanced)
+
+# Append scraped data to collective DF
+
+return(IPT)
+
+}, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+}
+
+```
